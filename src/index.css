@@ -10,3 +10,119 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
+
+@media (min-width: 700px) and (max-width: 1199px) {
+    .kiosk-shell {
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+        padding: 12px;
+    }
+
+    .kiosk-container {
+        display: flex;
+        height: 100%;
+        min-height: 0;
+        flex-direction: column;
+    }
+
+    .kiosk-header {
+        flex: 0 0 auto;
+        margin-bottom: 8px;
+        gap: 10px;
+    }
+
+    .kiosk-header h1 {
+        font-size: 1.35rem;
+        line-height: 1.55rem;
+    }
+
+    .kiosk-header p {
+        margin-top: 2px;
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+
+    .kiosk-header img {
+        height: 64px;
+        width: 64px;
+    }
+
+    .kiosk-status {
+        flex: 0 0 auto;
+        margin-bottom: 8px;
+        gap: 8px;
+    }
+
+    .kiosk-status > section {
+        padding: 10px 12px;
+    }
+
+    .kiosk-status p {
+        margin-top: 0;
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+
+    .kiosk-status p:last-child {
+        font-size: 1.25rem;
+        line-height: 1.5rem;
+    }
+
+    .kiosk-status section > div > div:last-child {
+        padding: 8px;
+    }
+
+    .kiosk-workspace {
+        display: grid;
+        min-height: 0;
+        flex: 1 1 auto;
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .kiosk-flow,
+    .kiosk-main {
+        min-height: 0 !important;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .kiosk-flow {
+        padding: 14px;
+    }
+
+    .kiosk-flow input {
+        min-width: 0;
+    }
+
+    .kiosk-steps {
+        display: grid;
+        gap: 5px;
+    }
+
+    .kiosk-steps button {
+        gap: 8px;
+        padding: 7px 9px;
+        border-radius: 10px;
+    }
+
+    .kiosk-steps button span span:last-child {
+        display: none;
+    }
+
+    .kiosk-main {
+        padding: 20px;
+    }
+
+    .kiosk-main > div:last-child {
+        margin-top: 18px;
+        padding-top: 14px;
+    }
+
+    .kiosk-preview {
+        display: none;
+    }
+}

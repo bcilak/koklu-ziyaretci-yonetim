@@ -797,11 +797,11 @@ export default function VisitorHygieneCardSystem() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-100 p-4 text-slate-900 md:p-6">
-            <div className="mx-auto max-w-7xl">
+        <div className={`min-h-screen bg-slate-100 p-4 text-slate-900 md:p-6 ${!showAdmin ? "kiosk-shell" : ""}`}>
+            <div className={`mx-auto max-w-7xl ${!showAdmin ? "kiosk-container" : ""}`}>
                 {toast && <div className="fixed right-5 top-5 z-50 rounded-2xl bg-red-600 px-5 py-3 text-sm font-medium text-white shadow-xl">{toast}</div>}
 
-                <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <header className="kiosk-header mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-4">
                         <BrandLogo size="lg" />
                         <div>
@@ -829,7 +829,7 @@ export default function VisitorHygieneCardSystem() {
                 </header>
 
                 {!showAdmin && (
-                    <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+                    <div className="kiosk-status mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
                         <StatusCard title={t("insideVisitors")} value={String(summary.inside_count)} icon="user" />
                         <StatusCard title={t("activeCards")} value={String(summary.active_card_count)} icon="card" />
                         <StatusCard title={t("riskyDeclarations")} value={String(summary.risk_count)} icon="warning" />
@@ -853,8 +853,8 @@ export default function VisitorHygieneCardSystem() {
                         setQuestions={setQuestions}
                     />
                 ) : (
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr_340px]">
-                        <Panel className="flex flex-col justify-between p-5">
+                    <div className="kiosk-workspace grid grid-cols-1 gap-6 xl:grid-cols-[300px_1fr_340px]">
+                        <Panel className="kiosk-flow flex flex-col justify-between p-5">
                             <div>
                                 <div className="mb-4 flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-slate-500">{t("visitorFlow")}</h2>
@@ -863,7 +863,7 @@ export default function VisitorHygieneCardSystem() {
                                 <div className="mb-5 h-2 rounded-full bg-slate-100">
                                     <div className="h-2 rounded-full bg-slate-900 transition-all" style={{ width: `${progress}%` }} />
                                 </div>
-                                <div className="space-y-3">
+                                <div className="kiosk-steps space-y-3">
                                     {steps.map((item, index) => (
                                         <button
                                             key={`${item.label}-${index}`}
@@ -890,7 +890,7 @@ export default function VisitorHygieneCardSystem() {
                             </div>
                         </Panel>
 
-                        <Panel className="min-h-[690px] p-6 md:p-8">
+                        <Panel className="kiosk-main min-h-[690px] p-6 md:p-8">
                             {step === 0 && <VisitorInfo form={form} updateField={updateField} requiredFilled={requiredFilled} lang={lang} />}
                             {step === questionStep && <QuestionStep questions={activeQuestions} answers={answers} updateAnswer={updateAnswer} riskFlags={riskFlags} lang={lang} />}
                             {isConsentStep && currentConsent && (
@@ -1867,7 +1867,7 @@ function StatusPill({ status }) {
 
 function LivePreview({ form, answers, questions, signatureTouched, recordId, nowText, selectedZones, zones, riskFlags, staffUnlocked }) {
     return (
-        <Panel className="p-5">
+        <Panel className="kiosk-preview p-5">
             <div className="mb-5 flex items-center gap-3">
                 <BrandLogo />
                 <div>
