@@ -563,6 +563,9 @@ export default function VisitorHygieneCardSystem() {
         apiRequest("/api/bootstrap")
             .then((data) => {
                 if (!active) return;
+                if (data.storage !== "postgresql") {
+                    throw new Error("Uygulama merkezi veritabanı modunda çalışmıyor. Lütfen sayfayı yenileyin.");
+                }
                 setSummary(data.summary || { inside_count: 0, active_card_count: 0, risk_count: 0 });
                 if (data.settings?.consents) setConsentSections(data.settings.consents);
                 if (data.settings?.zones) setZones(data.settings.zones);
@@ -695,7 +698,10 @@ export default function VisitorHygieneCardSystem() {
         }
         if (step === zoneStep && !recordSubmitted) {
             try {
-                await apiRequest("/api/records", { method: "POST", body: JSON.stringify(currentRecord) });
+                const result = await apiRequest("/api/records", { method: "POST", body: JSON.stringify(currentRecord) });
+                if (!result?.persisted || result.record?.id !== currentRecord.id) {
+                    throw new Error("Kayıt veritabanında doğrulanamadı. Lütfen tekrar deneyin.");
+                }
                 setRecordSubmitted(true);
                 setSummary((current) => ({
                     inside_count: current.inside_count + 1,

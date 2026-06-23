@@ -170,6 +170,7 @@ app.get("/api/bootstrap", asyncRoute(async (_request, response) => {
     ]);
     const settings = Object.fromEntries(settingsResult.rows.map((row) => [row.setting_key, row.setting_value]));
     response.json({
+        storage: "postgresql",
         settings,
         summary: summaryResult.rows[0],
     });
@@ -187,11 +188,12 @@ app.post("/api/records", recordLimiter, asyncRoute(async (request, response) => 
     }
 
     const entryAt = record.createdAtIso ? new Date(record.createdAtIso) : new Date();
-    await query(
+    const result = await query(
         `INSERT INTO visitor_records
             (id, full_name, company, card_id, status, entry_at, expected_exit, payload)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (id) DO NOTHING
+         RETURNING *`,
         [
             record.id,
             record.name,
@@ -203,7 +205,14 @@ app.post("/api/records", recordLimiter, asyncRoute(async (request, response) => 
             JSON.stringify(record),
         ],
     );
-    response.status(201).json({ ok: true });
+    if (!result.rowCount) {
+        return response.status(409).json({ error: "Bu kayıt numarası daha önce kullanılmış" });
+    }
+    response.status(201).json({
+        ok: true,
+        persisted: true,
+        record: serializeRecord(result.rows[0]),
+    });
 }));
 
 app.patch("/api/records/:id/exit", requireStaff, asyncRoute(async (request, response) => {

@@ -125,6 +125,15 @@ npm run db:init
 pm2 restart koklu-ziyaretci
 ```
 
+Build sonrasında domainin güncel JavaScript paketini sunduğunu doğrulayın:
+
+```bash
+grep -o '/assets/[^"]*' dist/index.html
+curl -s https://DOMAIN/ | grep -o '/assets/[^"]*'
+```
+
+İki çıktının aynı olması gerekir.
+
 ## Sağlık Kontrolü
 
 ```bash

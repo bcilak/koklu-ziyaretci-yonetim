@@ -8,12 +8,12 @@
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
-    "build": "vite build",
+    "build": "vite build --emptyOutDir",
     "preview": "vite preview --host 0.0.0.0",
     "start": "node server/index.js",
     "db:init": "node server/init-db.js",
     "test": "node tests/database.mjs",
-    "deploy:check": "vite build && node --check server/index.js && node --check server/init-db.js"
+    "deploy:check": "vite build --emptyOutDir && node --check server/index.js && node --check server/init-db.js"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
