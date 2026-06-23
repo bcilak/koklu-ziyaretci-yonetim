@@ -134,8 +134,12 @@ curl https://DOMAIN/api/health
 Beklenen yanıt:
 
 ```json
-{"ok":true}
+{"ok":true,"storage":"postgresql"}
 ```
+
+Farklı cihazlarda farklı kayıtlar görünüyorsa domainin hâlâ eski statik sürümü
+sunmadığını bu yanıtla doğrulayın. `404`, HTML veya `storage` alanı olmayan bir
+yanıt reverse proxy ya da tarayıcı önbelleğinin güncel olmadığını gösterir.
 
 ## Yedekleme
 

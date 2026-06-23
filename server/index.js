@@ -62,6 +62,10 @@ const recordLimiter = rateLimit({
 });
 
 app.use("/api", apiLimiter);
+app.use("/api", (_request, response, next) => {
+    response.setHeader("Cache-Control", "no-store");
+    next();
+});
 
 const parseCookies = (header = "") =>
     Object.fromEntries(header.split(";").map((part) => part.trim()).filter(Boolean).map((part) => {
@@ -125,7 +129,7 @@ const validRecord = (record) =>
 
 app.get("/api/health", asyncRoute(async (_request, response) => {
     await query("SELECT 1");
-    response.json({ ok: true });
+    response.json({ ok: true, storage: "postgresql" });
 }));
 
 app.post("/api/auth/login", loginLimiter, (request, response) => {
@@ -245,7 +249,10 @@ app.put("/api/settings/:key", requireStaff, asyncRoute(async (request, response)
 
 app.use("/api", (_request, response) => response.status(404).json({ error: "API endpoint bulunamadı" }));
 app.use(express.static(distDir, { index: false, maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
-app.get("*", (_request, response) => response.sendFile(join(distDir, "index.html")));
+app.get("*", (_request, response) => {
+    response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    response.sendFile(join(distDir, "index.html"));
+});
 
 app.use((error, _request, response, _next) => {
     console.error(error);
