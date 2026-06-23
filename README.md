@@ -1,58 +1,146 @@
 # Köklü Zeytincilik Ziyaretçi Yönetim Sistemi
 
-Tablet kiosk üzerinden ziyaretçi beyanı, dijital imza, yetkili kimlik/kart kontrolü, alan seçimi, günlük rapor ve CSV/PDF çıktı akışlarını içerir.
+React, Node.js/Express ve PostgreSQL tabanlı merkezi ziyaretçi yönetim sistemi.
 
 ## Özellikler
 
-- Tablet/tarayıcı dilini otomatik algılayan Türkçe ve İngilizce ziyaretçi akışı
-- Admin panelinden Evet/Hayır sorusu ekleme, düzenleme, pasife alma ve silme
-- Türkçe girilen soru ve onay metinlerini otomatik İngilizceye çevirme
-- Başlangıç/bitiş tarihine göre rapor filtreleme
-- Bugün, bu hafta ve bu ay için toplam giriş/çıkış özetleri
-- Bugün / Bu Hafta / Bu Ay hızlı rapor filtreleri
-- Filtrelenen kayıtları Windows Excel uyumlu UTF-16LE CSV olarak indirme
-- Yetkili ekranında planlanan çıkış için saat seçici
-- Kayıt bazlı PDF/yazdırma çıktısı
+- Tablet kiosk ziyaretçi akışı ve dijital imza
+- Yetkili kimlik/kart kontrolü ve alan seçimi
+- PostgreSQL üzerinde merkezi kayıt ve ayar saklama
+- HttpOnly oturum çereziyle sunucu tarafı PIN doğrulaması
+- Türkçe/İngilizce arayüz ve otomatik çeviri
+- Günlük, haftalık, aylık ve tarih aralıklı raporlar
+- Excel uyumlu UTF-16LE CSV ve PDF/yazdırma çıktısı
 
-## Kurulum
+## Gereksinimler
+
+- Node.js 20 veya üzeri önerilir. Minimum desteklenen sürüm Node.js 18.18'dir.
+- PostgreSQL 14 veya üzeri
+- HTTPS kullanan domain
+
+## Yerel Kurulum
 
 ```bash
 npm install
+cp .env.example .env
+npm run build
+npm run db:init
+npm start
 ```
 
-`.env.example` dosyasını `.env` olarak kopyalayın ve yetkili/admin PIN değerini değiştirin:
+Uygulama varsayılan olarak `http://127.0.0.1:3000` adresinde çalışır.
 
-```bash
-VITE_STAFF_PIN=1234
-```
-
-## Geliştirme
+Geliştirme sırasında API ve Vite'ı birlikte çalıştırmak için:
 
 ```bash
 npm run dev
 ```
 
-## Üretim Build
+## PostgreSQL Kurulumu
+
+PostgreSQL terminalini açın:
 
 ```bash
+sudo -u postgres psql
+```
+
+Veritabanı kullanıcısı ve veritabanını oluşturun:
+
+```sql
+CREATE USER kokluziyaret WITH PASSWORD 'BURAYA_COK_GUCLU_BIR_SIFRE';
+CREATE DATABASE kokluziyaret OWNER kokluziyaret;
+GRANT ALL PRIVILEGES ON DATABASE kokluziyaret TO kokluziyaret;
+\q
+```
+
+`.env` dosyasını düzenleyin:
+
+```env
+DATABASE_URL=postgresql://kokluziyaret:URL_ENCODE_EDILMIS_SIFRE@127.0.0.1:5432/kokluziyaret
+DATABASE_SSL=false
+DATABASE_POOL_SIZE=10
+STAFF_PIN=GUCLU_PERSONEL_PINI
+SESSION_SECRET=EN_AZ_32_KARAKTER_UZUN_RASTGELE_BIR_DEGER
+COOKIE_SECURE=true
+TRUST_PROXY=1
+PORT=3000
+NODE_ENV=production
+```
+
+Şemayı kurun:
+
+```bash
+npm run db:init
+```
+
+## Üretim Çalıştırma
+
+```bash
+npm install
 npm run build
+npm run db:init
+npm start
 ```
 
-Build çıktısı `dist/` klasörüne oluşur. Bu klasör statik dosya olarak Nginx, Apache, IIS veya herhangi bir statik hosting servisine yüklenebilir.
-
-Vercel ve Netlify için gerekli build ayarları proje içinde hazırdır.
-
-## Sunucuda Önizleme
+Kalıcı süreç için PM2:
 
 ```bash
-npm run preview
+npm install -g pm2
+pm2 start server/index.js --name koklu-ziyaretci
+pm2 save
+pm2 startup
 ```
 
-## Teslim Notları
+`pm2 startup` komutunun ekrana yazdığı komutu da çalıştırın.
 
-- Kayıtlar tarayıcı cihazında `localStorage` içinde saklanır. Tek tablet/kiosk kullanımında uygundur.
-- Birden fazla tabletin aynı kayıt havuzunu paylaşması istenirse backend ve merkezi veritabanı eklenmelidir.
-- Statik uygulamadaki personel PIN'i temel kiosk erişim kontrolüdür; internet üzerinden güçlü kimlik doğrulama yerine geçmez. Güçlü yetkilendirme için backend gerekir.
-- PDF butonu tarayıcı yazdırma penceresini açar; kullanıcı “PDF olarak kaydet” seçebilir.
-- CSV butonu günlük kayıtları Excel uyumlu CSV olarak indirir.
-- Köklü Zeytincilik logosu `public/koklu-logo.png` dosyasındadır.
+## Nginx Reverse Proxy
+
+Domain'i Node uygulamasına yönlendirin:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name kokluzeytincilik.altikodtech.com.tr;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Artık `dist` içeriğini `public_html` köküne kopyalamayın. Node sunucusu hem API'yi hem frontend dosyalarını sunar.
+
+## Güncelleme
+
+```bash
+git pull
+npm install
+npm run build
+npm run db:init
+pm2 restart koklu-ziyaretci
+```
+
+## Sağlık Kontrolü
+
+```bash
+curl https://DOMAIN/api/health
+```
+
+Beklenen yanıt:
+
+```json
+{"ok":true}
+```
+
+## Yedekleme
+
+```bash
+pg_dump -U kokluziyaret -h 127.0.0.1 kokluziyaret > kokluziyaret-backup.sql
+```
+
+Veritabanı şifresini, `.env` dosyasını ve yedekleri GitHub'a göndermeyin.

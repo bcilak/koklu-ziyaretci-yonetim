@@ -1,12 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 
-const STAFF_PIN = import.meta.env.VITE_STAFF_PIN || "1234";
-const STORAGE_VERSION = "production-v1";
 const CLIENT_LOGO = "/koklu-logo.png";
 const CLIENT_NAME = "Köklü Zeytincilik";
 const PROVIDER_NAME = "Altıkod Digital Solutions";
-let storageVersionChecked = false;
 
 const defaultZones = [
     { id: "production-a", name: "Üretim A", type: "Üretim", risk: "Yüksek" },
@@ -308,22 +305,20 @@ const normalizeQuestions = (questions) => questions.map((question) => ({
     active: question.active !== false,
 }));
 
-const safeRead = (key, fallback) => {
-    try {
-        if (!storageVersionChecked) {
-            storageVersionChecked = true;
-            if (localStorage.getItem("visitor_schema_version") !== STORAGE_VERSION) {
-                localStorage.removeItem("visitor_records");
-                localStorage.removeItem("visitor_consents");
-                localStorage.removeItem("visitor_zones");
-                localStorage.setItem("visitor_schema_version", STORAGE_VERSION);
-            }
-        }
-        const value = localStorage.getItem(key);
-        return value ? JSON.parse(value) : fallback;
-    } catch {
-        return fallback;
+const apiRequest = async (path, options = {}) => {
+    const response = await fetch(path, {
+        credentials: "same-origin",
+        headers: {
+            "Content-Type": "application/json",
+            ...options.headers,
+        },
+        ...options,
+    });
+    const payload = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok) {
+        throw new Error(payload?.error || "Sunucu ile iletişim kurulamadı");
     }
+    return payload;
 };
 
 const buildInitialMap = (items, value = false) =>
@@ -522,20 +517,24 @@ export default function VisitorHygieneCardSystem() {
     const [step, setStep] = useState(0);
     const [form, setForm] = useState(initialForm);
     const [selectedZones, setSelectedZones] = useState(["office"]);
-    const [records, setRecords] = useState(() => safeRead("visitor_records", initialRecords));
-    const [consentSections, setConsentSections] = useState(() => safeRead("visitor_consents", defaultConsentSections));
-    const [zones, setZones] = useState(() => safeRead("visitor_zones", defaultZones));
-    const [questions, setQuestions] = useState(() => normalizeQuestions(safeRead("visitor_questions", defaultVisitorQuestions)));
-    const [answers, setAnswers] = useState(() => buildInitialMap(normalizeQuestions(safeRead("visitor_questions", defaultVisitorQuestions)), ""));
+    const [records, setRecords] = useState(initialRecords);
+    const [consentSections, setConsentSections] = useState(defaultConsentSections);
+    const [zones, setZones] = useState(defaultZones);
+    const [questions, setQuestions] = useState(() => normalizeQuestions(defaultVisitorQuestions));
+    const [answers, setAnswers] = useState(() => buildInitialMap(normalizeQuestions(defaultVisitorQuestions), ""));
     const [consents, setConsents] = useState(() => buildInitialMap(Object.values(consentSections)));
     const [readCompleted, setReadCompleted] = useState(() => buildInitialMap(Object.values(consentSections)));
     const [signature, setSignature] = useState("");
     const [signatureTouched, setSignatureTouched] = useState(false);
+    const [recordSubmitted, setRecordSubmitted] = useState(false);
     const [staffUnlocked, setStaffUnlocked] = useState(false);
     const [showAdmin, setShowAdmin] = useState(false);
+    const [adminAuthenticated, setAdminAuthenticated] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState(null);
+    const [summary, setSummary] = useState({ inside_count: 0, active_card_count: 0, risk_count: 0 });
     const [toast, setToast] = useState("");
     const [lang, setLang] = useState(detectPreferredLanguage);
+    const [backendState, setBackendState] = useState({ loading: true, error: "" });
 
     const consentList = useMemo(() => Object.values(consentSections), [consentSections]);
     const activeQuestions = useMemo(() => questions.filter((question) => question.active), [questions]);
@@ -559,10 +558,50 @@ export default function VisitorHygieneCardSystem() {
     const zoneStep = handoffStep + 2;
     const doneStep = handoffStep + 3;
 
-    useEffect(() => localStorage.setItem("visitor_records", JSON.stringify(records)), [records]);
-    useEffect(() => localStorage.setItem("visitor_consents", JSON.stringify(consentSections)), [consentSections]);
-    useEffect(() => localStorage.setItem("visitor_zones", JSON.stringify(zones)), [zones]);
-    useEffect(() => localStorage.setItem("visitor_questions", JSON.stringify(questions)), [questions]);
+    useEffect(() => {
+        let active = true;
+        apiRequest("/api/bootstrap")
+            .then((data) => {
+                if (!active) return;
+                setSummary(data.summary || { inside_count: 0, active_card_count: 0, risk_count: 0 });
+                if (data.settings?.consents) setConsentSections(data.settings.consents);
+                if (data.settings?.zones) setZones(data.settings.zones);
+                if (data.settings?.questions) setQuestions(normalizeQuestions(data.settings.questions));
+                setBackendState({ loading: false, error: "" });
+            })
+            .catch((error) => {
+                if (!active) return;
+                setBackendState({ loading: false, error: error.message });
+            });
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!adminAuthenticated || backendState.loading) return undefined;
+        const timeout = window.setTimeout(() => {
+            apiRequest("/api/settings/questions", { method: "PUT", body: JSON.stringify(questions) })
+                .catch((error) => notify(error.message));
+        }, 600);
+        return () => window.clearTimeout(timeout);
+    }, [questions, adminAuthenticated, backendState.loading]);
+
+    useEffect(() => {
+        if (!adminAuthenticated || backendState.loading) return undefined;
+        const timeout = window.setTimeout(() => {
+            apiRequest("/api/settings/consents", { method: "PUT", body: JSON.stringify(consentSections) })
+                .catch((error) => notify(error.message));
+        }, 600);
+        return () => window.clearTimeout(timeout);
+    }, [consentSections, adminAuthenticated, backendState.loading]);
+
+    useEffect(() => {
+        if (!adminAuthenticated || backendState.loading) return undefined;
+        const timeout = window.setTimeout(() => {
+            apiRequest("/api/settings/zones", { method: "PUT", body: JSON.stringify(zones) })
+                .catch((error) => notify(error.message));
+        }, 600);
+        return () => window.clearTimeout(timeout);
+    }, [zones, adminAuthenticated, backendState.loading]);
 
     useEffect(() => {
         setConsents((current) => ({ ...buildInitialMap(consentList), ...current }));
@@ -645,7 +684,7 @@ export default function VisitorHygieneCardSystem() {
         return ["9999", "Ahmet Yılmaz", "Rakip Firma"].some((item) => query.includes(item.toLowerCase()));
     };
 
-    const next = () => {
+    const next = async () => {
         if (step === 0 && checkBlacklist()) {
             notify("KARA LİSTE UYARISI: Bu bilgi ile tesise giriş engellenmiştir. Lütfen güvenlik departmanı ile görüşün.");
             return;
@@ -654,8 +693,19 @@ export default function VisitorHygieneCardSystem() {
             notify(step === handoffStep ? "Devam için yetkili personel PIN girmelidir." : "Devam etmek için bu adımın zorunlu alanlarını tamamlayın.");
             return;
         }
-        if (step === zoneStep && !records.some((record) => record.id === recordMeta.id)) {
-            setRecords((current) => [currentRecord, ...current]);
+        if (step === zoneStep && !recordSubmitted) {
+            try {
+                await apiRequest("/api/records", { method: "POST", body: JSON.stringify(currentRecord) });
+                setRecordSubmitted(true);
+                setSummary((current) => ({
+                    inside_count: current.inside_count + 1,
+                    active_card_count: current.active_card_count + (currentRecord.visitorCardGiven ? 1 : 0),
+                    risk_count: current.risk_count + (currentRecord.riskFlags.length > 0 ? 1 : 0),
+                }));
+            } catch (error) {
+                notify(error.message);
+                return;
+            }
         }
         setStep((currentStep) => Math.min(currentStep + 1, steps.length - 1));
     };
@@ -674,6 +724,7 @@ export default function VisitorHygieneCardSystem() {
         setReadCompleted(buildInitialMap(consentList));
         setSignature("");
         setSignatureTouched(false);
+        setRecordSubmitted(false);
         setStaffUnlocked(false);
         setRecordMeta({ id: createRecordId(), createdAt: formatDateTime(), createdAtIso: new Date().toISOString(), time: formatTime() });
     };
@@ -683,28 +734,67 @@ export default function VisitorHygieneCardSystem() {
         notify("Günlük rapor CSV olarak indirildi.");
     };
 
-    const exitVisitor = (record) => {
-        setRecords((current) => current.map((item) => item.id === record.id ? { ...item, status: "Çıkış Yaptı", exitTime: formatTime(), identityTaken: false, visitorCardGiven: false } : item));
-        notify("Çıkış tamamlandı: Kimlik iade edildi, ziyaretçi kartı teslim alındı.");
+    const exitVisitor = async (record) => {
+        try {
+            const exitTime = formatTime();
+            const data = await apiRequest(`/api/records/${encodeURIComponent(record.id)}/exit`, {
+                method: "PATCH",
+                body: JSON.stringify({ exitTime }),
+            });
+            setRecords((current) => current.map((item) => item.id === record.id ? data.record : item));
+            setSummary((current) => ({
+                ...current,
+                inside_count: Math.max(0, current.inside_count - 1),
+                active_card_count: Math.max(0, current.active_card_count - (record.visitorCardGiven ? 1 : 0)),
+            }));
+            notify("Çıkış tamamlandı: Kimlik iade edildi, ziyaretçi kartı teslim alındı.");
+        } catch (error) {
+            notify(error.message);
+        }
     };
 
-    const handleAdminLogin = (pin) => {
-        if (pin === STAFF_PIN) {
+    const verifyPin = async (pin) => {
+        await apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
+    };
+
+    const handleAdminLogin = async (pin) => {
+        try {
+            await verifyPin(pin);
+            const data = await apiRequest("/api/records");
+            setRecords(data.records || []);
+            setAdminAuthenticated(true);
             setShowAdmin(true);
             notify("Admin girişi başarılı.");
-        } else {
-            notify("Hatalı PIN!");
+        } catch (error) {
+            notify(error.message);
         }
     };
 
-    const handleStaffUnlock = (pin) => {
-        if (pin === STAFF_PIN) {
+    const handleStaffUnlock = async (pin) => {
+        try {
+            await verifyPin(pin);
             setStaffUnlocked(true);
             notify("Yetkili ekranı açıldı.");
-        } else {
-            notify("Hatalı yetkili PIN'i.");
+        } catch (error) {
+            notify(error.message);
         }
     };
+
+    const logOutAdmin = async () => {
+        await apiRequest("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
+        setShowAdmin(false);
+        setAdminAuthenticated(false);
+        setRecords([]);
+        setSelectedRecord(null);
+    };
+
+    if (backendState.loading) {
+        return <SystemState title="Sistem hazırlanıyor" description="Sunucu ve veritabanı bağlantısı kontrol ediliyor." />;
+    }
+
+    if (backendState.error) {
+        return <SystemState title="Sunucu bağlantısı kurulamadı" description={backendState.error} error />;
+    }
 
     return (
         <div className="min-h-screen bg-slate-100 p-4 text-slate-900 md:p-6">
@@ -740,9 +830,9 @@ export default function VisitorHygieneCardSystem() {
 
                 {!showAdmin && (
                     <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-                        <StatusCard title={t("insideVisitors")} value={String(records.filter((r) => r.status === "İçeride").length)} icon="user" />
-                        <StatusCard title={t("activeCards")} value={String(records.filter((r) => r.visitorCardGiven).length)} icon="card" />
-                        <StatusCard title={t("riskyDeclarations")} value={String(records.filter((r) => r.riskFlags?.length).length + riskFlags.length)} icon="warning" />
+                        <StatusCard title={t("insideVisitors")} value={String(summary.inside_count)} icon="user" />
+                        <StatusCard title={t("activeCards")} value={String(summary.active_card_count)} icon="card" />
+                        <StatusCard title={t("riskyDeclarations")} value={String(summary.risk_count)} icon="warning" />
                         <StatusCard title={t("system")} value={allTestsPassed ? t("ready") : t("review")} icon="shield" />
                     </div>
                 )}
@@ -755,7 +845,7 @@ export default function VisitorHygieneCardSystem() {
                         selectedRecord={selectedRecord}
                         setSelectedRecord={setSelectedRecord}
                         exitVisitor={exitVisitor}
-                        onLogOut={() => setShowAdmin(false)}
+                        onLogOut={logOutAdmin}
                         consentSections={consentSections}
                         setConsentSections={setConsentSections}
                         zones={zones}
@@ -1894,6 +1984,21 @@ function CheckTile({ title, active, onClick }) {
 
 function StatusCard({ title, value, icon }) {
     return <Panel className="p-5"><div className="flex items-center justify-between"><div><p className="text-sm text-slate-500">{title}</p><p className="mt-1 text-2xl font-bold">{value}</p></div><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon name={icon} /></div></div></Panel>;
+}
+
+function SystemState({ title, description, error = false }) {
+    return (
+        <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+            <div className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-sm">
+                <div className={`mx-auto mb-5 w-fit rounded-full p-4 ${error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>
+                    <Icon name={error ? "warning" : "shield"} size={42} />
+                </div>
+                <h1 className="text-2xl font-bold">{title}</h1>
+                <p className="mt-3 text-slate-600">{description}</p>
+                {error && <button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-xl bg-slate-900 px-5 py-3 font-bold text-white">Tekrar Dene</button>}
+            </div>
+        </main>
+    );
 }
 
 function Panel({ children, className = "" }) { return <section className={`rounded-3xl border-0 bg-white shadow-sm ${className}`}>{children}</section>; }
