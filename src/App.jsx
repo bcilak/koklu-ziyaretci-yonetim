@@ -305,13 +305,19 @@ const normalizeQuestions = (questions) => questions.map((question) => ({
     active: question.active !== false,
 }));
 
+let sessionToken = "";
+
 const apiRequest = async (path, options = {}) => {
+    const headers = {
+        "Content-Type": "application/json",
+        ...options.headers,
+    };
+    if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
     const response = await fetch(path, {
         credentials: "same-origin",
-        headers: {
-            "Content-Type": "application/json",
-            ...options.headers,
-        },
+        headers,
         ...options,
     });
     const payload = response.status === 204 ? null : await response.json().catch(() => null);
@@ -794,12 +800,16 @@ export default function VisitorHygieneCardSystem() {
     };
 
     const verifyPin = async (pin) => {
-        await apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
+        const result = await apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
+        if (result?.token) sessionToken = result.token;
     };
 
     const handleAdminLogin = async (pin) => {
         try {
-            await verifyPin(pin);
+            const loginResult = await apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
+            if (loginResult?.token) {
+                sessionToken = loginResult.token;
+            }
             await refreshAdminRecords();
             setAdminAuthenticated(true);
             setShowAdmin(true);
@@ -821,6 +831,7 @@ export default function VisitorHygieneCardSystem() {
 
     const logOutAdmin = async () => {
         await apiRequest("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
+        sessionToken = "";
         setShowAdmin(false);
         setAdminAuthenticated(false);
         setRecords([]);
