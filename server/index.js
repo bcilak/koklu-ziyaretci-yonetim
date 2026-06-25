@@ -11,6 +11,7 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const distDir = join(currentDir, "..", "dist");
 const port = Number(process.env.PORT || 3000);
 const staffPin = process.env.STAFF_PIN;
+const adminPin = process.env.ADMIN_PIN || staffPin;
 const sessionSecret = process.env.SESSION_SECRET;
 const secureCookies = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
 const allowedSettings = new Set(["questions", "consents", "zones"]);
@@ -74,17 +75,23 @@ const parseCookies = (header = "") =>
         return [part.slice(0, separator), decodeURIComponent(part.slice(separator + 1))];
     }));
 
-const signSession = (expiresAt) => {
-    const payload = String(expiresAt);
+const signSession = (expiresAt, role = "staff") => {
+    const payload = `${role}:${expiresAt}`;
     const signature = crypto.createHmac("sha256", sessionSecret).update(payload).digest("base64url");
     return `${payload}.${signature}`;
 };
 
-const validSession = (value) => {
+const validSession = (value, requiredRole = "staff") => {
     if (!value) return false;
-    const [expiresAt, signature] = value.split(".");
+    const parts = value.split(".");
+    if (parts.length !== 2) return false;
+    const [payload, signature] = parts;
+    const [tokenRole, expiresAt] = payload.split(":");
+    
     if (!expiresAt || !signature || Number(expiresAt) < Date.now()) return false;
-    const expected = crypto.createHmac("sha256", sessionSecret).update(expiresAt).digest("base64url");
+    if (requiredRole === "admin" && tokenRole !== "admin") return false;
+    
+    const expected = crypto.createHmac("sha256", sessionSecret).update(payload).digest("base64url");
     const actualBuffer = Buffer.from(signature);
     const expectedBuffer = Buffer.from(expected);
     return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
@@ -101,9 +108,19 @@ const extractSession = (request) => {
 
 const requireStaff = (request, response, next) => {
     const session = extractSession(request);
-    if (!validSession(session)) {
+    if (!validSession(session, "staff")) {
         return response.status(401).json({ error: "Yetkisiz işlem" });
     }
+    request.userRole = session.split(".")[0].split(":")[0];
+    next();
+};
+
+const requireAdmin = (request, response, next) => {
+    const session = extractSession(request);
+    if (!validSession(session, "admin")) {
+        return response.status(403).json({ error: "Bu işlem için yönetici yetkisi gerekiyor" });
+    }
+    request.userRole = "admin";
     next();
 };
 
@@ -145,16 +162,24 @@ app.get("/api/health", asyncRoute(async (_request, response) => {
 app.post("/api/auth/login", loginLimiter, (request, response) => {
     const supplied = String(request.body?.pin || "");
     const suppliedBuffer = Buffer.from(supplied);
-    const pinBuffer = Buffer.from(staffPin);
-    const matches = suppliedBuffer.length === pinBuffer.length && crypto.timingSafeEqual(suppliedBuffer, pinBuffer);
-    if (!matches) return response.status(401).json({ error: "Hatalı PIN" });
+    const staffBuffer = Buffer.from(staffPin);
+    const adminBuffer = Buffer.from(adminPin);
+    
+    let role = null;
+    if (suppliedBuffer.length === adminBuffer.length && crypto.timingSafeEqual(suppliedBuffer, adminBuffer)) {
+        role = "admin";
+    } else if (suppliedBuffer.length === staffBuffer.length && crypto.timingSafeEqual(suppliedBuffer, staffBuffer)) {
+        role = "staff";
+    }
+
+    if (!role) return response.status(401).json({ error: "Hatalı PIN" });
 
     const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
-    const token = signSession(expiresAt);
+    const token = signSession(expiresAt, role);
     const cookieValue = encodeURIComponent(token);
     const cookieStr = `koklu_session=${cookieValue}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secureCookies ? "; Secure" : ""}`;
     response.setHeader("Set-Cookie", cookieStr);
-    response.json({ ok: true, token });
+    response.json({ ok: true, token, role });
 });
 
 app.post("/api/auth/logout", (_request, response) => {
@@ -186,7 +211,7 @@ app.get("/api/bootstrap", asyncRoute(async (_request, response) => {
     });
 }));
 
-app.get("/api/records", requireStaff, asyncRoute(async (_request, response) => {
+app.get("/api/records", requireAdmin, asyncRoute(async (_request, response) => {
     const result = await query("SELECT * FROM visitor_records ORDER BY entry_at DESC LIMIT 5000");
     response.json({ records: result.rows.map(serializeRecord) });
 }));
@@ -269,7 +294,7 @@ app.patch("/api/records/:id/exit", requireStaff, asyncRoute(async (request, resp
     response.json({ record: serializeRecord(result.rows[0]) });
 }));
 
-app.put("/api/settings/:key", requireStaff, asyncRoute(async (request, response) => {
+app.put("/api/settings/:key", requireAdmin, asyncRoute(async (request, response) => {
     const key = request.params.key;
     if (!allowedSettings.has(key)) return response.status(400).json({ error: "Geçersiz ayar" });
     if (!request.body || typeof request.body !== "object") {

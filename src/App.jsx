@@ -276,8 +276,7 @@ const translations = {
 
 const translate = (lang, key) => translations[lang]?.[key] || translations.TR[key] || key;
 const detectPreferredLanguage = () => {
-    const languages = navigator.languages?.length ? navigator.languages : [navigator.language];
-    return languages.some((language) => language?.toLowerCase().startsWith("en")) ? "EN" : "TR";
+    return "TR";
 };
 
 const autoTranslateToEnglish = async (text) => {
@@ -807,6 +806,9 @@ export default function VisitorHygieneCardSystem() {
     const handleAdminLogin = async (pin) => {
         try {
             const loginResult = await apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
+            if (loginResult?.role !== "admin") {
+                throw new Error("Bu alana sadece yönetici şifresi ile girilebilir.");
+            }
             if (loginResult?.token) {
                 sessionToken = loginResult.token;
             }
