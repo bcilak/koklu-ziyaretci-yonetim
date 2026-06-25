@@ -141,15 +141,15 @@ app.post("/api/auth/login", loginLimiter, (request, response) => {
     if (!matches) return response.status(401).json({ error: "Hatalı PIN" });
 
     const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
-    response.setHeader(
-        "Set-Cookie",
-        `koklu_session=${encodeURIComponent(signSession(expiresAt))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureCookies ? "; Secure" : ""}`,
-    );
+    const cookieValue = encodeURIComponent(signSession(expiresAt));
+    const cookieStr = `koklu_session=${cookieValue}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secureCookies ? "; Secure" : ""}`;
+    console.log(`[AUTH] Login OK – setting cookie (length=${cookieValue.length})`);
+    response.setHeader("Set-Cookie", cookieStr);
     response.json({ ok: true });
 });
 
 app.post("/api/auth/logout", (_request, response) => {
-    response.setHeader("Set-Cookie", `koklu_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? "; Secure" : ""}`);
+    response.setHeader("Set-Cookie", `koklu_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookies ? "; Secure" : ""}`);
     response.json({ ok: true });
 });
 
@@ -177,8 +177,13 @@ app.get("/api/bootstrap", asyncRoute(async (_request, response) => {
     });
 }));
 
-app.get("/api/records", requireStaff, asyncRoute(async (_request, response) => {
+app.get("/api/records", (req, res, next) => {
+    const cookies = parseCookies(req.headers.cookie);
+    console.log(`[GET /api/records] cookie present: ${!!cookies.koklu_session}, valid: ${validSession(cookies.koklu_session)}`);
+    next();
+}, requireStaff, asyncRoute(async (_request, response) => {
     const result = await query("SELECT * FROM visitor_records ORDER BY entry_at DESC LIMIT 5000");
+    console.log(`[GET /api/records] Returning ${result.rows.length} records`);
     response.json({ records: result.rows.map(serializeRecord) });
 }));
 
