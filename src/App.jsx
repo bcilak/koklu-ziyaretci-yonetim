@@ -1075,6 +1075,11 @@ function SignatureStep({ signature, setSignature, signatureTouched, setSignature
         canvas.height = rect.height * ratio;
         const ctx = canvas.getContext("2d");
         ctx.scale(ratio, ratio);
+        
+        // Fill with white background for JPEG export
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        
         ctx.lineWidth = 2.5;
         ctx.lineCap = "round";
         ctx.strokeStyle = "#0f172a";
@@ -1117,7 +1122,10 @@ function SignatureStep({ signature, setSignature, signatureTouched, setSignature
 
     const clearSignature = () => {
         const canvas = canvasRef.current;
-        canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+        const ctx = canvas.getContext("2d");
+        const rect = canvas.getBoundingClientRect();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
         setSignature("");
         setSignatureTouched(false);
     };
