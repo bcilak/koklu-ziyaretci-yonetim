@@ -1258,10 +1258,26 @@ function AdminLogin({ onLogin, lang = "TR" }) {
     return (
         <div>
             <h3 className="mb-3 text-sm font-semibold text-slate-500">{translate(lang, "adminLogin")}</h3>
-            <div className="flex gap-2">
-                <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN" className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-500" />
-                <button onClick={() => { onLogin(pin); setPin(""); }} className="rounded-xl bg-slate-900 px-4 text-sm font-medium text-white">{translate(lang, "login")}</button>
-            </div>
+            <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    void onLogin(pin);
+                    setPin("");
+                }}
+            >
+                <input
+                    type="password"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    placeholder="PIN"
+                    autoComplete="current-password"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-500"
+                />
+                <button type="submit" className="rounded-xl bg-slate-900 px-4 text-sm font-medium text-white">
+                    {translate(lang, "login")}
+                </button>
+            </form>
         </div>
     );
 }
