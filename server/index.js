@@ -16,6 +16,7 @@ const secureCookies = process.env.COOKIE_SECURE === "true" || process.env.NODE_E
 const allowedSettings = new Set(["questions", "consents", "zones"]);
 const asyncRoute = (handler) => (request, response, next) =>
     Promise.resolve(handler(request, response, next)).catch(next);
+const createRecordId = () => `ZYT-${new Date().getFullYear()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
 
 if (!staffPin) throw new Error("STAFF_PIN environment variable is required");
 if (!sessionSecret || sessionSecret.length < 32) {
@@ -116,7 +117,7 @@ const validText = (value, maxLength) =>
 
 const validRecord = (record) =>
     record
-    && validText(record.id, 64)
+    && (!record.id || validText(record.id, 64))
     && validText(record.name, 160)
     && validText(record.company, 160)
     && (!record.cardId || record.cardId === "-" || validText(record.cardId, 80))
@@ -188,31 +189,38 @@ app.post("/api/records", recordLimiter, asyncRoute(async (request, response) => 
     }
 
     const entryAt = record.createdAtIso ? new Date(record.createdAtIso) : new Date();
-    const result = await query(
-        `INSERT INTO visitor_records
-            (id, full_name, company, card_id, status, entry_at, expected_exit, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING *`,
-        [
-            record.id,
-            record.name,
-            record.company,
-            record.cardId === "-" ? null : record.cardId,
-            record.status || "İçeride",
-            entryAt,
-            record.expectedExitTime || null,
-            JSON.stringify(record),
-        ],
-    );
-    if (!result.rowCount) {
-        return response.status(409).json({ error: "Bu kayıt numarası daha önce kullanılmış" });
+    const payload = JSON.stringify(record);
+    let recordId = record.id?.trim() || createRecordId();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await query(
+            `INSERT INTO visitor_records
+                (id, full_name, company, card_id, status, entry_at, expected_exit, payload)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO NOTHING
+             RETURNING *`,
+            [
+                recordId,
+                record.name,
+                record.company,
+                record.cardId === "-" ? null : record.cardId,
+                record.status || "İçeride",
+                entryAt,
+                record.expectedExitTime || null,
+                payload,
+            ],
+        );
+        if (result.rowCount) {
+            return response.status(201).json({
+                ok: true,
+                persisted: true,
+                record: serializeRecord(result.rows[0]),
+            });
+        }
+        recordId = createRecordId();
     }
-    response.status(201).json({
-        ok: true,
-        persisted: true,
-        record: serializeRecord(result.rows[0]),
-    });
+
+    return response.status(409).json({ error: "Kayıt kimliği oluşturulamadı. Lütfen tekrar deneyin." });
 }));
 
 app.patch("/api/records/:id/exit", requireStaff, asyncRoute(async (request, response) => {

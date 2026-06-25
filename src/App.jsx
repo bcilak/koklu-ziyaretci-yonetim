@@ -324,7 +324,12 @@ const apiRequest = async (path, options = {}) => {
 const buildInitialMap = (items, value = false) =>
     items.reduce((current, item) => ({ ...current, [item.key]: value }), {});
 
-const createRecordId = () => `ZYT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+const createRecordId = () => {
+    const year = new Date().getFullYear();
+    const randomPart = globalThis.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 12)
+        || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    return `ZYT-${year}-${randomPart.toUpperCase()}`;
+};
 const formatDateTime = () =>
     new Intl.DateTimeFormat("tr-TR", {
         day: "2-digit",
@@ -699,8 +704,11 @@ export default function VisitorHygieneCardSystem() {
         if (step === zoneStep && !recordSubmitted) {
             try {
                 const result = await apiRequest("/api/records", { method: "POST", body: JSON.stringify(currentRecord) });
-                if (!result?.persisted || result.record?.id !== currentRecord.id) {
+                if (!result?.persisted || !result.record?.id) {
                     throw new Error("Kayıt veritabanında doğrulanamadı. Lütfen tekrar deneyin.");
+                }
+                if (result.record.id !== currentRecord.id) {
+                    setRecordMeta((current) => ({ ...current, id: result.record.id }));
                 }
                 setRecordSubmitted(true);
                 setSummary((current) => ({
