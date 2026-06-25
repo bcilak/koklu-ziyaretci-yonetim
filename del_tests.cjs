@@ -1,1 +1,0 @@
-const { Client } = require('pg'); const client = new Client({ connectionString: 'postgresql://kokluziyaret:3102591Ab.@127.0.0.1:5432/kokluziyaret' }); client.connect().then(() => client.query("DELETE FROM visitor_records WHERE id LIKE 'ZYT-2026-%'")).then(res => console.log('Deleted ' + res.rowCount)).catch(err => console.error(err.message)).finally(() => client.end());
