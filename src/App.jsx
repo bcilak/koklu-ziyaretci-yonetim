@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 
 const CLIENT_LOGO = "/koklu-logo.png";
@@ -563,15 +563,25 @@ export default function VisitorHygieneCardSystem() {
     const zoneStep = handoffStep + 2;
     const doneStep = handoffStep + 3;
 
+    const refreshSummary = useCallback(async () => {
+        const data = await apiRequest("/api/bootstrap");
+        if (data.storage !== "postgresql") {
+            throw new Error("Uygulama merkezi veritabanı modunda çalışmıyor. Lütfen sayfayı yenileyin.");
+        }
+        setSummary(data.summary || { inside_count: 0, active_card_count: 0, risk_count: 0 });
+        return data;
+    }, []);
+
+    const refreshAdminRecords = useCallback(async () => {
+        const data = await apiRequest("/api/records");
+        setRecords(data.records || []);
+    }, []);
+
     useEffect(() => {
         let active = true;
-        apiRequest("/api/bootstrap")
+        refreshSummary()
             .then((data) => {
                 if (!active) return;
-                if (data.storage !== "postgresql") {
-                    throw new Error("Uygulama merkezi veritabanı modunda çalışmıyor. Lütfen sayfayı yenileyin.");
-                }
-                setSummary(data.summary || { inside_count: 0, active_card_count: 0, risk_count: 0 });
                 if (data.settings?.consents) setConsentSections(data.settings.consents);
                 if (data.settings?.zones) setZones(data.settings.zones);
                 if (data.settings?.questions) setQuestions(normalizeQuestions(data.settings.questions));
@@ -582,7 +592,23 @@ export default function VisitorHygieneCardSystem() {
                 setBackendState({ loading: false, error: error.message });
             });
         return () => { active = false; };
-    }, []);
+    }, [refreshSummary]);
+
+    useEffect(() => {
+        if (backendState.loading) return undefined;
+        const interval = window.setInterval(() => {
+            refreshSummary().catch(() => {});
+        }, 10000);
+        return () => window.clearInterval(interval);
+    }, [backendState.loading, refreshSummary]);
+
+    useEffect(() => {
+        if (!adminAuthenticated || !showAdmin || backendState.loading) return undefined;
+        const interval = window.setInterval(() => {
+            refreshAdminRecords().catch(() => {});
+        }, 6000);
+        return () => window.clearInterval(interval);
+    }, [adminAuthenticated, showAdmin, backendState.loading, refreshAdminRecords]);
 
     useEffect(() => {
         if (!adminAuthenticated || backendState.loading) return undefined;
@@ -774,8 +800,7 @@ export default function VisitorHygieneCardSystem() {
     const handleAdminLogin = async (pin) => {
         try {
             await verifyPin(pin);
-            const data = await apiRequest("/api/records");
-            setRecords(data.records || []);
+            await refreshAdminRecords();
             setAdminAuthenticated(true);
             setShowAdmin(true);
             notify("Admin girişi başarılı.");
