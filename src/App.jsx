@@ -702,9 +702,9 @@ export default function VisitorHygieneCardSystem() {
         language: lang,
     };
 
-    const notify = (message) => {
+    const notify = (message, duration = 3000) => {
         setToast(message);
-        window.setTimeout(() => setToast(""), 3000);
+        window.setTimeout(() => setToast(""), duration);
     };
 
     const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
@@ -743,7 +743,7 @@ export default function VisitorHygieneCardSystem() {
                     risk_count: current.risk_count + (currentRecord.riskFlags.length > 0 ? 1 : 0),
                 }));
             } catch (error) {
-                notify(error.message);
+                notify(`KAYIT HATASI: ${error.message} - Lütfen yetkiliye haber verin.`, 8000);
                 return;
             }
         }
@@ -1094,10 +1094,15 @@ function SignatureStep({ signature, setSignature, signatureTouched, setSignature
         ctx.lineTo(point.x, point.y);
         ctx.stroke();
         setSignatureTouched(true);
-        setSignature(canvasRef.current.toDataURL("image/png"));
     };
 
-    const stopDrawing = () => { drawingRef.current = false; };
+    const stopDrawing = () => { 
+        if (drawingRef.current) {
+            // Compress image to avoid hitting reverse proxy payload size limits
+            setSignature(canvasRef.current.toDataURL("image/jpeg", 0.6));
+        }
+        drawingRef.current = false; 
+    };
 
     const clearSignature = () => {
         const canvas = canvasRef.current;

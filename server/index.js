@@ -184,8 +184,18 @@ app.get("/api/records", requireStaff, asyncRoute(async (_request, response) => {
 
 app.post("/api/records", recordLimiter, asyncRoute(async (request, response) => {
     const record = request.body;
+    const payloadSize = JSON.stringify(record).length;
+    console.log(`[POST /api/records] Payload size: ${(payloadSize / 1024).toFixed(1)}KB, id: ${record?.id}, name: ${record?.name}, company: ${record?.company}`);
     if (!validRecord(record)) {
-        return response.status(400).json({ error: "Geçersiz veya eksik kayıt bilgisi" });
+        const checks = {
+            hasRecord: !!record,
+            nameValid: record && typeof record.name === "string" && record.name.trim().length > 0 && record.name.length <= 160,
+            companyValid: record && typeof record.company === "string" && record.company.trim().length > 0 && record.company.length <= 160,
+            zonesArray: record && Array.isArray(record.selectedZones),
+            riskArray: record && Array.isArray(record.riskFlags),
+        };
+        console.error(`[POST /api/records] Validation FAILED:`, JSON.stringify(checks));
+        return response.status(400).json({ error: "Geçersiz veya eksik kayıt bilgisi", validation: checks });
     }
 
     const entryAt = record.createdAtIso ? new Date(record.createdAtIso) : new Date();
@@ -211,12 +221,14 @@ app.post("/api/records", recordLimiter, asyncRoute(async (request, response) => 
             ],
         );
         if (result.rowCount) {
+            console.log(`[POST /api/records] SUCCESS: Record ${recordId} persisted to database`);
             return response.status(201).json({
                 ok: true,
                 persisted: true,
                 record: serializeRecord(result.rows[0]),
             });
         }
+        console.warn(`[POST /api/records] ID conflict for ${recordId}, retrying (attempt ${attempt + 1}/3)`);
         recordId = createRecordId();
     }
 
@@ -272,8 +284,8 @@ app.get("*", (_request, response) => {
 });
 
 app.use((error, _request, response, _next) => {
-    console.error(error);
-    response.status(500).json({ error: "Sunucu hatası" });
+    console.error(`[ERROR] ${error.message}`, error.stack);
+    response.status(500).json({ error: "Sunucu hatası", detail: process.env.NODE_ENV !== "production" ? error.message : undefined });
 });
 
 const server = app.listen(port, () => {
